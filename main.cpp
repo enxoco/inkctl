@@ -15,7 +15,7 @@ int main(int argc, char *argv[])
     // This makes the 'runner' object accessible in QML as 'kubectl'
     engine.rootContext()->setContextProperty("kubectl", &runner);
 
-    const QUrl url(u"qrc:/qt/qml/k8s/dashboard/Main.qml"_qs);
+    const QUrl url(u"qrc:/qt/qml/paper/dashboard/Main.qml"_qs);
     
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,
         &app, []() { QCoreApplication::exit(-1); },

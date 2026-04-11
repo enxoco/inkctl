@@ -7,8 +7,11 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QVariantList>
-#include <QTimer> // Added missing header
-#include <QCoreApplication>  // <--- ADD THIS LINE
+#include <QTimer>
+#include <QCoreApplication>
+#include <QProcessEnvironment>
+#include <QDebug>
+
 class KubectlRunner : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList podList READ podList NOTIFY podListChanged)
@@ -21,42 +24,27 @@ public:
     QVariantList podList() const { return m_podList; }
 
     Q_INVOKABLE void startK3s() {
-        // Run the start script detached so it persists after this app closes
-        QProcess::startDetached("/home/root/start_k3s.sh");
-        
-        // Give k3s 5 seconds to initialize before the first refresh
-        QTimer::singleShot(5000, this, &KubectlRunner::refresh);
+        // Use detached so the script lives on even if the dashboard blips
+        QProcess::startDetached("/bin/bash", {"/home/root/start_k3s.sh"});
+        // Give K3s time to initialize the API server before refreshing
+        QTimer::singleShot(8000, this, &KubectlRunner::refresh);
     }
 
     Q_INVOKABLE void refresh() {
-        QProcess *proc = new QProcess(this);
-        
-        // Setting KUBECONFIG here ensures kubectl knows where to look
-        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-        env.insert("KUBECONFIG", "/etc/rancher/k3s/k3s.yaml");
-        proc->setProcessEnvironment(env);
-
-        // Using 'k3s kubectl' is often more reliable on-device
-        proc->start("k3s", {"kubectl", "get", "pods", "-A", "-o", "json"});
-        
-        connect(proc, &QProcess::finished, [this, proc]() {
-            if (proc->exitCode() != 0) {
-                m_k3sRunning = false;
-                m_podList.clear();
-            } else {
-                m_k3sRunning = true;
-                parsePods(proc->readAllStandardOutput());
-            }
-            emit k3sStatusChanged();
-            emit podListChanged();
-            proc->deleteLater();
-        });
+        // Start with the standard k3s location on the reMarkable
+        runKubectl("/etc/rancher/k3s/k3s.yaml"); 
     }
 
-    // Add the exit function we discussed for a clean return to xochitl
     Q_INVOKABLE void exitToSystem() {
-        QProcess::execute("/home/root/stop_k3s.sh");
+        qDebug() << "Exiting dashboard and restoring xochitl...";
+        
+        // 1. Optional: stop k3s if you want to save battery/resources
+        // QProcess::execute("/home/root/stop_k3s.sh");
+        
+        // 2. Restart xochitl. Use startDetached so it persists after this app dies.
         QProcess::startDetached("systemctl", {"start", "xochitl"});
+        
+        // 3. Exit this app
         QCoreApplication::quit();
     }
 
@@ -65,31 +53,80 @@ signals:
     void podListChanged();
 
 private:
+    void runKubectl(const QString &configPath) {
+        QProcess *proc = new QProcess(this);
+        QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+        
+        // Ensure kubectl knows where to look
+        env.insert("KUBECONFIG", configPath);
+        // Force basic output to avoid terminal styling codes in the JSON
+        env.insert("TERM", "dumb"); 
+        proc->setProcessEnvironment(env);
+
+        proc->start("kubectl", {"get", "pods", "-A", "-o", "json"});
+        
+        connect(proc, &QProcess::finished, [this, proc, configPath]() {
+            bool success = (proc->exitStatus() == QProcess::NormalExit && proc->exitCode() == 0);
+            
+            if (success) {
+                m_k3sRunning = true;
+                parsePods(proc->readAllStandardOutput());
+            } else {
+                qWarning() << "Kubectl failed with error:" << proc->readAllStandardError();
+                m_k3sRunning = false;
+                m_podList.clear();
+            }
+            
+            updateUI();
+            proc->deleteLater();
+        });
+    }
+
+    void updateUI() {
+        emit k3sStatusChanged();
+        emit podListChanged();
+    }
+
     void parsePods(const QByteArray &data) {
         QJsonDocument doc = QJsonDocument::fromJson(data);
+        if (doc.isNull() || !doc.isObject()) return;
+
         QJsonArray items = doc.object()["items"].toArray();
         QVariantList newList;
 
         for (const QJsonValue &value : items) {
             QJsonObject obj = value.toObject();
             QVariantMap pod;
-            pod["namespace"] = obj["metadata"].toObject()["namespace"].toString();
-            pod["name"] = obj["metadata"].toObject()["name"].toString();
-            pod["status"] = obj["status"].toObject()["phase"].toString();
             
-            QJsonArray containerStatuses = obj["status"].toObject()["containerStatuses"].toArray();
+            // Extract Metadata
+            QJsonObject metadata = obj["metadata"].toObject();
+            pod["namespace"] = metadata["namespace"].toString();
+            pod["name"] = metadata["name"].toString();
+            
+            // Extract Status
+            QJsonObject statusObj = obj["status"].toObject();
+            pod["status"] = statusObj["phase"].toString();
+            
+            // Calculate Ready Count
+            QJsonArray containerStatuses = statusObj["containerStatuses"].toArray();
             int readyCount = 0;
+            int totalCount = containerStatuses.size();
+            
             for(const QJsonValue &cs : containerStatuses) {
-                if(cs.toObject()["ready"].toBool()) readyCount++;
+                if(cs.toObject()["ready"].toBool()) {
+                    readyCount++;
+                }
             }
-            pod["ready"] = QString("%1/%2").arg(readyCount).arg(containerStatuses.size());
+            
+            // Format as "1/1" etc.
+            pod["ready"] = QString("%1/%2").arg(readyCount).arg(totalCount > 0 ? totalCount : 0);
             
             newList.append(pod);
         }
         m_podList = newList;
     }
 
-    bool m_k3sRunning = true;
+    bool m_m_k3sRunning = false;
     QVariantList m_podList;
 };
 
