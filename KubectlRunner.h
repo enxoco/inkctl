@@ -126,7 +126,7 @@ private:
         m_podList = newList;
     }
 
-    bool m_m_k3sRunning = false;
+    bool m_k3sRunning = false;
     QVariantList m_podList;
 };
 
