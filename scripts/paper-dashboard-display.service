@@ -1,0 +1,17 @@
+[Unit]
+Description=k9s Paper Dashboard Display
+# Conflicts ensures systemd stops xochitl before starting this service,
+# giving us clean DRM master ownership with no races.
+Conflicts=xochitl.service
+After=xochitl.service
+
+[Service]
+ExecStart=/home/root/paper_dashboard
+# Restart on crash so the display recovers automatically.
+# On clean exit (user pressed Exit), don't restart — hand back to xochitl.
+Restart=on-failure
+RestartSec=2
+Environment=QT_QPA_PLATFORM=epaper
+Environment=QT_QUICK_BACKEND=epaper
+StandardOutput=journal
+StandardError=journal

@@ -1,16 +1,15 @@
 [Unit]
-Description=k9s Paper Dashboard
-# Ensure xochitl is running before we start monitoring it
+Description=k9s Paper Dashboard Monitor
+# Wait for xochitl to be running before we start monitoring it
 After=xochitl.service
 
 [Service]
-ExecStart=/home/root/paper_dashboard
-# When the user exits, systemd restarts us. RestartSec gives xochitl time
-# to start before paper_dashboard checks whether to enter monitor mode.
+# Lightweight monitor mode: no Qt, just watches for the trigger notebook.
+# When triggered, starts paper-dashboard-display.service which conflicts
+# with xochitl so systemd handles the display handoff cleanly.
+ExecStart=/home/root/paper_dashboard --monitor
 Restart=always
 RestartSec=5
-Environment=QT_QPA_PLATFORM=epaper
-Environment=QT_QUICK_BACKEND=epaper
 StandardOutput=journal
 StandardError=journal
 

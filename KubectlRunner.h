@@ -39,10 +39,10 @@ public:
         qDebug() << "Exiting dashboard and restoring xochitl...";
 
         QProcess::execute("/home/root/stop_k3s.sh");
+        // Start xochitl — the display service (Restart=on-failure) won't
+        // restart on clean exit, and the monitor service (Restart=always)
+        // will come back automatically and start watching for the next trigger.
         QProcess::startDetached("systemctl", {"start", "xochitl"});
-
-        // Quit — systemd (Restart=always, RestartSec=5) relaunches us after
-        // xochitl has had time to start, and we'll re-enter monitor mode.
         QCoreApplication::quit();
     }
 

@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <unistd.h>
 
 // The reMarkable notebook UUID that triggers the dashboard.
@@ -15,53 +16,94 @@ static bool xochitlRunning() {
     return system("pgrep -x xochitl > /dev/null 2>&1") == 0;
 }
 
-// Blocks until it is safe to initialize the epaper display.
-//
-// If awaitStart is true (i.e. we relaunched after exit), we poll for up to
-// 5 seconds for xochitl to appear before monitoring it. This handles the
-// race where xochitl hasn't started yet when we relaunch ourselves.
-//
-// Once xochitl is seen running, we tail its journal and wait for TARGET_UUID
-// to be opened. Then we stop xochitl and poll until its framebuffer lock is
-// released before returning.
-static void waitForXochitlTrigger() {
+// Blocks until xochitl opens TARGET_UUID, then returns true.
+// Returns false if xochitl stops running before the trigger is detected.
+static bool waitForXochitlTrigger() {
     if (!xochitlRunning()) {
-        return; // Nothing to wait for — proceed directly to dashboard
+        return false;
     }
 
     fprintf(stdout, "xochitl is running. Waiting for notebook %s...\n", TARGET_UUID);
+    fflush(stdout);
 
-    // -n 0: only new lines from this point on (don't replay old logs)
-    FILE *pipe = popen("journalctl -u xochitl -f -n 0 2>/dev/null", "r");
-    if (!pipe) return;
-
-    char buf[1024];
+    // journalctl -f can exit unexpectedly; loop until we find the trigger or
+    // xochitl stops running on its own.
     bool found = false;
-    while (!found && fgets(buf, sizeof(buf), pipe)) {
-        if (strstr(buf, "Opening document") && strstr(buf, TARGET_UUID)) {
-            found = true;
+    while (!found && xochitlRunning()) {
+        // -n 0: only new lines from this point on (don't replay old logs)
+        FILE *pipe = popen("journalctl -u xochitl -f -n 0 2>/dev/null", "r");
+        if (!pipe) {
+            usleep(1000000);
+            continue;
+        }
+        char buf[1024];
+        while (!found && fgets(buf, sizeof(buf), pipe)) {
+            // Match the EntityOpen or documentlockmanager "Opening document" entries.
+            // Both appear in xochitl's log when a notebook is opened.
+            if (strstr(buf, TARGET_UUID) &&
+                (strstr(buf, "EntityOpen") || strstr(buf, "Opening document"))) {
+                found = true;
+            }
+        }
+        pclose(pipe);
+        if (!found && xochitlRunning())
+            usleep(500000); // brief pause before retrying journalctl
+    }
+
+    return found;
+}
+
+// --monitor mode: lightweight, no Qt. Watches for the notebook trigger and
+// then starts paper-dashboard-display.service, which has Conflicts=xochitl.service
+// so systemd handles stopping xochitl atomically before the display starts.
+static int runMonitorMode() {
+    // If the display service is already running, just idle until it exits.
+    if (system("systemctl is-active paper-dashboard-display.service > /dev/null 2>&1") == 0) {
+        sleep(5);
+        return 0;
+    }
+
+    // Ensure xochitl is running so we have something to monitor.
+    // This handles the case where xochitl was stopped by a previous display
+    // session (via Conflicts=) and nothing restarted it yet.
+    if (!xochitlRunning()) {
+        fprintf(stdout, "xochitl not running — starting it...\n");
+        fflush(stdout);
+        system("systemctl start xochitl");
+        // Wait up to 30s for xochitl to appear
+        for (int i = 0; i < 150 && !xochitlRunning(); ++i)
+            usleep(200000);
+        if (!xochitlRunning()) {
+            // Xochitl failed to start (likely hit StartLimitBurst).
+            // Sleep briefly and let systemd restart us to try again.
+            sleep(5);
+            return 0;
         }
     }
-    pclose(pipe);
 
-    if (!found) return;
-
-    fprintf(stdout, "Target notebook opened. Stopping xochitl...\n");
-    system("systemctl stop xochitl");
-
-    // Poll until xochitl's process is gone (framebuffer released)
-    while (xochitlRunning()) {
-        usleep(200000);
+    if (waitForXochitlTrigger()) {
+        fprintf(stdout, "Trigger detected. Handing off to display service.\n");
+        fflush(stdout);
+        system("systemctl start paper-dashboard-display.service");
     }
-
-    fprintf(stdout, "xochitl stopped. Launching dashboard.\n");
+    return 0;
 }
 
 int main(int argc, char *argv[])
 {
-    // Run before QGuiApplication — which is what initializes the epaper
-    // platform plugin and acquires the framebuffer lock.
-    waitForXochitlTrigger();
+    // --monitor: lightweight trigger-detection mode (no Qt, no framebuffer).
+    if (argc > 1 && strcmp(argv[1], "--monitor") == 0) {
+        return runMonitorMode();
+    }
+
+    // Display mode: systemd (via Conflicts=xochitl.service in
+    // paper-dashboard-display.service) guarantees xochitl is fully stopped
+    // before we reach here, so the framebuffer is free.
+
+    // Remove stale EPFramebuffer lock files left by a previous crashed instance.
+    // EPFramebuffer uses a PID-based lock (not flock) so it doesn't self-clean.
+    remove("/tmp/epframebuffer.lock");
+    remove("/tmp/epd.lock");
 
     qputenv("QT_QPA_PLATFORM", "epaper");
     qputenv("QT_QUICK_BACKEND", "epaper");
