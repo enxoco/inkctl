@@ -52,14 +52,23 @@ Window {
                 width: parent.width; height: 80
                 color: "black"
                 
-                Text {
-                    text: " paper-dash: Pods"
-                    color: "white"
-                    font.pixelSize: 30
-                    font.bold: true
+                Column {
                     anchors.left: parent.left
                     anchors.leftMargin: 20
                     anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2
+
+                    Text {
+                        text: "paper-dash: Pods"
+                        color: "white"
+                        font.pixelSize: 28
+                        font.bold: true
+                    }
+                    Text {
+                        text: kubectl.hostname
+                        color: "#aaaaaa"
+                        font.pixelSize: 16
+                    }
                 }
 
                 Row {
@@ -114,19 +123,19 @@ Window {
                     Row {
                         anchors.fill: parent
                         Rectangle { width: parent.width * 0.2; height: 50; border.width: 0.5
-                            Text { text: model.namespace; anchors.centerIn: parent; elide: Text.ElideRight; width: parent.width - 10 }
+                            Text { text: modelData.namespace; anchors.centerIn: parent; elide: Text.ElideRight; width: parent.width - 10 }
                         }
                         Rectangle { width: parent.width * 0.4; height: 50; border.width: 0.5
-                            Text { text: model.name; anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; width: parent.width - 10 }
+                            Text { text: modelData.name; anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight; width: parent.width - 10 }
                         }
                         Rectangle { width: parent.width * 0.2; height: 50; border.width: 0.5
-                            Text { text: model.ready; anchors.centerIn: parent }
+                            Text { text: modelData.ready; anchors.centerIn: parent }
                         }
                         Rectangle { width: parent.width * 0.2; height: 50; border.width: 0.5
-                            Text { 
-                                text: model.status; anchors.centerIn: parent
-                                font.bold: model.status !== "Running"
-                                color: model.status === "Running" ? "black" : "red"
+                            Text {
+                                text: modelData.status; anchors.centerIn: parent
+                                font.bold: modelData.status !== "Running"
+                                color: modelData.status === "Running" ? "black" : "red"
                             }
                         }
                     }

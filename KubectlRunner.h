@@ -10,18 +10,21 @@
 #include <QTimer>
 #include <QCoreApplication>
 #include <QProcessEnvironment>
+#include <QSysInfo>
 #include <QDebug>
 
 class KubectlRunner : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList podList READ podList NOTIFY podListChanged)
     Q_PROPERTY(bool k3sRunning READ k3sRunning NOTIFY k3sStatusChanged)
+    Q_PROPERTY(QString hostname READ hostname CONSTANT)
 
 public:
     explicit KubectlRunner(QObject *parent = nullptr) : QObject(parent) {}
 
     bool k3sRunning() const { return m_k3sRunning; }
     QVariantList podList() const { return m_podList; }
+    QString hostname() const { return QSysInfo::machineHostName(); }
 
     Q_INVOKABLE void startK3s() {
         // Use detached so the script lives on even if the dashboard blips
