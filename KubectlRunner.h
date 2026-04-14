@@ -39,10 +39,12 @@ public:
         qDebug() << "Exiting dashboard and restoring xochitl...";
         
         // 1. Optional: stop k3s if you want to save battery/resources
-        // QProcess::execute("/home/root/stop_k3s.sh");
+        QProcess::execute("/home/root/stop_k3s.sh");
         
         // 2. Restart xochitl. Use startDetached so it persists after this app dies.
         QProcess::startDetached("systemctl", {"start", "xochitl"});
+        QProcess::startDetached("/home/root/watchme.sh", {"start", "xochitl"});
+
         
         // 3. Exit this app
         QCoreApplication::quit();
