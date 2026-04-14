@@ -1,0 +1,18 @@
+[Unit]
+Description=k9s Paper Dashboard
+# Ensure xochitl is running before we start monitoring it
+After=xochitl.service
+
+[Service]
+ExecStart=/home/root/paper_dashboard
+# When the user exits, systemd restarts us. RestartSec gives xochitl time
+# to start before paper_dashboard checks whether to enter monitor mode.
+Restart=always
+RestartSec=5
+Environment=QT_QPA_PLATFORM=epaper
+Environment=QT_QUICK_BACKEND=epaper
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -37,16 +37,12 @@ public:
 
     Q_INVOKABLE void exitToSystem() {
         qDebug() << "Exiting dashboard and restoring xochitl...";
-        
-        // 1. Optional: stop k3s if you want to save battery/resources
-        QProcess::execute("/home/root/stop_k3s.sh");
-        
-        // 2. Restart xochitl. Use startDetached so it persists after this app dies.
-        QProcess::startDetached("systemctl", {"start", "xochitl"});
-        QProcess::startDetached("/home/root/watchme.sh", {"start", "xochitl"});
 
-        
-        // 3. Exit this app
+        QProcess::execute("/home/root/stop_k3s.sh");
+        QProcess::startDetached("systemctl", {"start", "xochitl"});
+
+        // Quit — systemd (Restart=always, RestartSec=5) relaunches us after
+        // xochitl has had time to start, and we'll re-enter monitor mode.
         QCoreApplication::quit();
     }
 
@@ -65,7 +61,7 @@ private:
         env.insert("TERM", "dumb"); 
         proc->setProcessEnvironment(env);
 
-        proc->start("kubectl", {"get", "pods", "-A", "-o", "json"});
+        proc->start("/home/root/sbin/k3s", {"kubectl", "get", "pods", "-A", "-o", "json"});
         
         connect(proc, &QProcess::finished, [this, proc, configPath]() {
             bool success = (proc->exitStatus() == QProcess::NormalExit && proc->exitCode() == 0);
