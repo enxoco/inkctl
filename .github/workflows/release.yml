@@ -18,6 +18,7 @@ jobs:
 
       - name: Build with CMake
         run: |
+          source /opt/codex/*/environment-setup-cortexa55-remarkable-linux
           # Note: The entrypoint of your toolchain image already sources 
           # the environment, so we can jump straight to building.
           cmake . -B build -DCMAKE_BUILD_TYPE=Release
