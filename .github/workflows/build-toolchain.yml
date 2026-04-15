@@ -1,0 +1,47 @@
+name: Build Toolchain Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      os_version:
+        description: 'reMarkable OS Version (e.g., 3.26.0.68)'
+        required: true
+        default: '3.26.0.68'
+      sdk_url:
+        description: 'URL for the SDK .sh file'
+        required: true
+        default: 'https://storage.googleapis.com/remarkable-codex-toolchain/3.26.0.68/chiappa/remarkable-production-image-5.6.75-chiappa-public-x86_64-toolchain.sh'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-toolchain
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.toolchain
+          push: true
+          # This tags the image with the OS version you provided
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.os_version }}
+          build-args: |
+            RM_OS_VERSION=${{ github.event.inputs.os_version }}
+            SDK_URL=${{ github.event.inputs.sdk_url }}

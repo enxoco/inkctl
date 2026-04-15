@@ -1,0 +1,24 @@
+FROM ubuntu:22.04
+
+ARG RM_OS_VERSION=3.26.0.68
+# Install basic build dependencies
+RUN apt-get update && apt-get install -y \
+    cmake \
+    build-essential \
+    git \
+    python3 \
+    xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy your SDK installer into the image
+# Assumes the installer is in the same directory as the Dockerfile
+ADD https://storage.googleapis.com/remarkable-codex-toolchain/3.26.0.68/chiappa/remarkable-production-image-5.6.75-chiappa-public-x86_64-toolchain.sh /tmp/sdk-installer.sh
+
+# Run the installer to /opt/codex
+RUN chmod +x /tmp/sdk-installer.sh && \
+    /tmp/sdk-installer.sh -y -d /opt/codex && \
+    rm /tmp/sdk-installer.sh
+
+# Set the entrypoint to source the environment automatically
+WORKDIR /build
+ENTRYPOINT ["/bin/bash", "-c", "source /opt/codex/chiappa/5.6.75/environment-setup-cortexa55-remarkable-linux && \"$@\"", "--"]
