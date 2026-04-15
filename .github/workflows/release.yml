@@ -2,8 +2,8 @@ name: Build and Release Application
 
 on:
   push:
-    tags:
-      - 'v*' # Triggers when you push a tag like v1.0.0
+    # tags:
+    #   - 'v*' # Triggers when you push a tag like v1.0.0
 
 jobs:
   build-and-release:
@@ -18,7 +18,7 @@ jobs:
 
       - name: Build with CMake
         run: |
-          source /opt/codex/chiappa/5.6.75/environment-setup-cortexa55-remarkable-linux
+          . /opt/codex/chiappa/5.6.75/environment-setup-cortexa55-remarkable-linux
           # Note: The entrypoint of your toolchain image already sources 
           # the environment, so we can jump straight to building.
           cmake . -B build -DCMAKE_BUILD_TYPE=Release
