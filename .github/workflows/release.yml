@@ -1,0 +1,45 @@
+name: Build and Release Application
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers when you push a tag like v1.0.0
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    # Point to the toolchain image you built in the previous step
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/k9s-paper-toolchain:3.26.0.68
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build with CMake
+        run: |
+          # Note: The entrypoint of your toolchain image already sources 
+          # the environment, so we can jump straight to building.
+          cmake . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel $(nproc)
+
+      - name: Prepare Artifacts
+        run: |
+          mkdir -p release_assets
+          # Move the binary and systemd units for the reMarkable
+          cp build/paper_dashboard release_assets/
+          cp scripts/paper-dashboard.service release_assets/
+          cp scripts/paper-dashboard-display.service release_assets/
+          
+          # Create a single archive for the release
+          tar -czvf paper-dashboard-rm-os-3.26.0.68.tar.gz -C release_assets .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            paper-dashboard-rm-os-3.26.0.68.tar.gz
+          # Automatically generates release notes from commit history
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
