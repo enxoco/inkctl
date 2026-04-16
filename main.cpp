@@ -13,7 +13,7 @@
 static constexpr const char *TARGET_UUID = "4614616c-273c-4704-b1ff-4cc04a9eda83";
 
 static bool xochitlRunning() {
-    return system("pgrep -x xochitl > /dev/null 2>&1") == 0;
+    return system("pgrep -f /usr/bin/xochitl > /dev/null 2>&1") == 0;
 }
 
 // Blocks until xochitl opens TARGET_UUID, then returns true.
