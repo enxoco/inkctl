@@ -2,8 +2,8 @@ name: Build and Release Application
 
 on:
   push:
-    # tags:
-    #   - 'v*' # Triggers when you push a tag like v1.0.0
+    tags:
+      - 'v*' # Triggers when you push a tag like v1.0.0
 
 jobs:
   build-and-release:
