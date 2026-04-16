@@ -11,7 +11,8 @@ jobs:
     # Point to the toolchain image you built in the previous step
     container:
       image: ghcr.io/${{ github.repository_owner }}/k9s-paper-toolchain:3.26.0.68
-
+    permissions:
+        contents: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
