@@ -59,7 +59,7 @@ Window {
                     spacing: 2
 
                     Text {
-                        text: "paper-dash: Pods"
+                        text: "InkCTL: Pods"
                         color: "white"
                         font.pixelSize: 28
                         font.bold: true

@@ -54,11 +54,11 @@ static bool waitForXochitlTrigger() {
 }
 
 // --monitor mode: lightweight, no Qt. Watches for the notebook trigger and
-// then starts paper-dashboard-display.service, which has Conflicts=xochitl.service
+// then starts inkctl-display.service, which has Conflicts=xochitl.service
 // so systemd handles stopping xochitl atomically before the display starts.
 static int runMonitorMode() {
     // If the display service is already running, just idle until it exits.
-    if (system("systemctl is-active paper-dashboard-display.service > /dev/null 2>&1") == 0) {
+    if (system("systemctl is-active inkctl-display.service > /dev/null 2>&1") == 0) {
         sleep(5);
         return 0;
     }
@@ -84,7 +84,7 @@ static int runMonitorMode() {
     if (waitForXochitlTrigger()) {
         fprintf(stdout, "Trigger detected. Handing off to display service.\n");
         fflush(stdout);
-        system("systemctl start paper-dashboard-display.service");
+        system("systemctl start inkctl-display.service");
     }
     return 0;
 }
@@ -97,7 +97,7 @@ int main(int argc, char *argv[])
     }
 
     // Display mode: systemd (via Conflicts=xochitl.service in
-    // paper-dashboard-display.service) guarantees xochitl is fully stopped
+    // inkctl-display.service) guarantees xochitl is fully stopped
     // before we reach here, so the framebuffer is free.
 
     // Remove stale EPFramebuffer lock files left by a previous crashed instance.
@@ -114,7 +114,7 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("kubectl", &runner);
 
-    const QUrl url(u"qrc:/qt/qml/paper/dashboard/Main.qml"_qs);
+    const QUrl url(u"qrc:/qt/qml/inkctl/Main.qml"_qs);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,
         &app, []() { QCoreApplication::exit(-1); },
         Qt::QueuedConnection);

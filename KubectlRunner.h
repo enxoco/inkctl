@@ -20,13 +20,28 @@ class KubectlRunner : public QObject {
     Q_PROPERTY(QString hostname READ hostname CONSTANT)
 
 public:
-    explicit KubectlRunner(QObject *parent = nullptr) : QObject(parent) {}
+    explicit KubectlRunner(QObject *parent = nullptr) : QObject(parent) {
+        // Initial check to see if K3s is already alive
+        bool currentlyRunning = checkK3sProcess();
+        
+        if (!currentlyRunning) {
+            qDebug() << "k3s not detected on startup. Initializing...";
+            startK3s();
+        } else {
+            qDebug() << "k3s already running. Fetching initial pod list...";
+            m_k3sRunning = true;
+            refresh();
+        }
+    }
 
     bool k3sRunning() const { return m_k3sRunning; }
     QVariantList podList() const { return m_podList; }
     QString hostname() const { return QSysInfo::machineHostName(); }
 
     Q_INVOKABLE void startK3s() {
+        // Set state to true immediately so UI can show "Connecting..." or "Starting..."
+        m_k3sRunning = true;
+        emit k3sStatusChanged();
         // Use detached so the script lives on even if the dashboard blips
         QProcess::startDetached("/bin/bash", {"/home/root/start_k3s.sh"});
         // Give K3s time to initialize the API server before refreshing
@@ -54,6 +69,13 @@ signals:
     void podListChanged();
 
 private:
+    // Helper to check for the k3s process name anywhere in the command line (-f)
+    bool checkK3sProcess() {
+        QProcess check;
+        check.start("pgrep", {"-f", "k3s"});
+        check.waitForFinished(1000); 
+        return (check.exitCode() == 0);
+    }
     void runKubectl(const QString &configPath) {
         QProcess *proc = new QProcess(this);
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
@@ -63,7 +85,7 @@ private:
         // Force basic output to avoid terminal styling codes in the JSON
         env.insert("TERM", "dumb"); 
         proc->setProcessEnvironment(env);
-
+    
         proc->start("/home/root/sbin/k3s", {"kubectl", "get", "pods", "-A", "-o", "json"});
         
         connect(proc, &QProcess::finished, [this, proc, configPath]() {

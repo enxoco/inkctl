@@ -30,18 +30,18 @@ jobs:
         run: |
           mkdir -p release_assets
           # Move the binary and systemd units for the reMarkable
-          cp build/paper_dashboard release_assets/
-          cp scripts/paper-dashboard.service release_assets/
-          cp scripts/paper-dashboard-display.service release_assets/
+          cp build/inkctl release_assets/
+          cp scripts/inkctl.service release_assets/
+          cp scripts/inkctl-display.service release_assets/
           
           # Create a single archive for the release
-          tar -czvf paper-dashboard-rm-os-3.26.0.68.tar.gz -C release_assets .
+          tar -czvf inkctl-rm-os-3.26.0.68.tar.gz -C release_assets .
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            paper-dashboard-rm-os-3.26.0.68.tar.gz
+            inkctl-rm-os-3.26.0.68.tar.gz
           # Automatically generates release notes from commit history
           generate_release_notes: true
         env:

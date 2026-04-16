@@ -1,13 +1,13 @@
 [Unit]
-Description=k9s Paper Dashboard Monitor
+Description=k9s InkCTL Monitor
 # Wait for xochitl to be running before we start monitoring it
 After=xochitl.service
 
 [Service]
 # Lightweight monitor mode: no Qt, just watches for the trigger notebook.
-# When triggered, starts paper-dashboard-display.service which conflicts
+# When triggered, starts inkctl-display.service which conflicts
 # with xochitl so systemd handles the display handoff cleanly.
-ExecStart=/home/root/paper_dashboard --monitor
+ExecStart=/home/root/inkctl --monitor
 Restart=always
 RestartSec=5
 StandardOutput=journal
