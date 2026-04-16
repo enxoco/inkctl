@@ -3,8 +3,10 @@ import QtQuick.Controls
 
 Window {
     id: root
-    width: Screen.width
-    height: Screen.height
+    readonly property bool isRemarkable: kubectl.hostname.includes("imx93-chiappa") || 
+                                         (kubectl.hostname === "" && Qt.platform.os !== "osx")
+    width: isRemarkable ? Screen.width : 540
+    height: isRemarkable ? Screen.height : 720
     visible: true
     color: "white"
 
@@ -12,9 +14,9 @@ Window {
     // This container ensures the rotation happens around the center correctly.
     Item {
         id: mainContainer
-        width: root.height 
-        height: root.width
-        rotation: 90
+        width: isRemarkable ? root.height : root.width
+        height: isRemarkable ? root.width : root.height
+        rotation: isRemarkable ? 90 : 0
         anchors.centerIn: parent
 
         Column {

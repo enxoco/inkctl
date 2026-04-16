@@ -2,7 +2,6 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include "KubectlRunner.h"
-
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -114,10 +113,13 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("kubectl", &runner);
 
-    const QUrl url(u"qrc:/qt/qml/inkctl/Main.qml"_qs);
-    QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed,
-        &app, []() { QCoreApplication::exit(-1); },
-        Qt::QueuedConnection);
+    const QUrl url(QStringLiteral("qrc:/qt/qml/inkctl_ui/Main.qml"));
+    QObject::connect(&engine, &QQmlApplicationEngine::objectCreated,
+                    &app, [url](QObject *obj, const QUrl &objUrl) {
+        // If the object is null and it's the URL we tried to load, it failed.
+        if (!obj && url == objUrl)
+            QCoreApplication::exit(-1);
+    }, Qt::QueuedConnection);
 
     engine.load(url);
 

@@ -21,8 +21,8 @@ qt_add_executable(app_inkctl
 
 # 4. Register the QML module
 # URI is the "import" name used inside your QML files
-qt_add_qml_module(inkctl
-    URI inkctl
+qt_add_qml_module(app_inkctl
+    URI inkctl_ui
     VERSION 0.0.3
     QML_FILES Main.qml
 )

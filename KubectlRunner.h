@@ -12,6 +12,8 @@
 #include <QProcessEnvironment>
 #include <QSysInfo>
 #include <QDebug>
+#include <QDir>
+#include <QStandardPaths>
 
 class KubectlRunner : public QObject {
     Q_OBJECT
@@ -21,14 +23,10 @@ class KubectlRunner : public QObject {
 
 public:
     explicit KubectlRunner(QObject *parent = nullptr) : QObject(parent) {
-        // Initial check to see if K3s is already alive
-        bool currentlyRunning = checkK3sProcess();
-        
-        if (!currentlyRunning) {
-            qDebug() << "k3s not detected on startup. Initializing...";
+        if (!checkK3sProcess()) {
+            qDebug() << "k3s not detected. Initializing startup sequence...";
             startK3s();
         } else {
-            qDebug() << "k3s already running. Fetching initial pod list...";
             m_k3sRunning = true;
             refresh();
         }
@@ -39,28 +37,67 @@ public:
     QString hostname() const { return QSysInfo::machineHostName(); }
 
     Q_INVOKABLE void startK3s() {
-        // Set state to true immediately so UI can show "Connecting..." or "Starting..."
+        QString logPath = "/home/root/k3s.log";
         m_k3sRunning = true;
         emit k3sStatusChanged();
-        // Use detached so the script lives on even if the dashboard blips
-        QProcess::startDetached("/bin/bash", {"/home/root/start_k3s.sh"});
-        // Give K3s time to initialize the API server before refreshing
-        QTimer::singleShot(8000, this, &KubectlRunner::refresh);
+
+        // 1. Load kernel modules required for K3s networking
+        // These are blocking calls, but they are very fast.
+        QProcess::execute("modprobe", {"nf_tables"});
+        QProcess::execute("modprobe", {"nf_tables_ipv4"});
+        QProcess::execute("modprobe", {"nft_compat"});
+
+        // 2. Define the server arguments
+        QString k3sBin = "/home/root/sbin/k3s";
+        QStringList args;
+        args << "server"
+             << "--data-dir" << "/home/root/k3s_data"
+             << "--disable" << "local-storage"
+             << "--disable" << "metrics-server"
+             << "--disable-cloud-controller"
+             << "--kube-apiserver-arg=max-requests-inflight=10"
+             << "--kube-apiserver-arg=max-mutating-requests-inflight=5"
+             << "--kubelet-arg=enforce-node-allocatable=pods"
+             << "--snapshotter=native"
+             << "--flannel-backend=host-gw";
+
+        // 3. Launch K3s as a detached process
+        // This replaces nohup/setsid and redirects logs to a file manually
+        // We wrap it in a shell to handle the log redirection easily
+        if (!QDir("/home/root").exists()) {
+            logPath = QDir::currentPath() + "/k3s.log";
+        }
+        QString command = QString("%1 %2 > %3 2>&1").arg(k3sBin).arg(args.join(" ")).arg(logPath);        
+
+        if (QProcess::startDetached("/bin/sh", {"-c", command})) {
+            qDebug() << "k3s server process launched.";
+            QTimer::singleShot(8000, this, &KubectlRunner::refresh);
+        } else {
+            qWarning() << "Failed to launch k3s binary.";
+            m_k3sRunning = false;
+            emit k3sStatusChanged();
+        }
     }
 
     Q_INVOKABLE void refresh() {
-        // Start with the standard k3s location on the reMarkable
-        runKubectl("/etc/rancher/k3s/k3s.yaml"); 
+        QString config = "/etc/rancher/k3s/k3s.yaml";
+    
+        // If testing locally, try to use your default local kubeconfig
+        if (!QFile::exists(config)) {
+            config = QDir::homePath() + "/.kube/config";
+        }
+        runKubectl(config); 
     }
 
     Q_INVOKABLE void exitToSystem() {
-        qDebug() << "Exiting dashboard and restoring xochitl...";
+        qDebug() << "Shutting down inkctl...";
+        
+        // 1. Stop k3s (Replaces stop_k3s.sh)
+        stopK3s();
 
-        QProcess::execute("/home/root/stop_k3s.sh");
-        // Start xochitl — the display service (Restart=on-failure) won't
-        // restart on clean exit, and the monitor service (Restart=always)
-        // will come back automatically and start watching for the next trigger.
+        // 2. Restart xochitl
         QProcess::startDetached("systemctl", {"start", "xochitl"});
+        
         QCoreApplication::quit();
     }
 
@@ -69,37 +106,50 @@ signals:
     void podListChanged();
 
 private:
-    // Helper to check for the k3s process name anywhere in the command line (-f)
     bool checkK3sProcess() {
         QProcess check;
-        check.start("pgrep", {"-f", "k3s"});
+        check.start("pgrep", {"-f", "k3s server"});
         check.waitForFinished(1000); 
         return (check.exitCode() == 0);
     }
+
+    void stopK3s() {
+        // Find the PID and kill it, then unmount any leftover k3s mounts
+        QProcess::execute("pkill", {"-f", "k3s"});
+        
+        // Cleanup mounts that k3s often leaves behind
+        // This is a common requirement on the reMarkable to prevent disk issues
+        QProcess::execute("/bin/sh", {"-c", "grep -l 'k3s' /proc/self/mounts | xargs -r umount"});
+    }
+
     void runKubectl(const QString &configPath) {
         QProcess *proc = new QProcess(this);
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-        
-        // Ensure kubectl knows where to look
         env.insert("KUBECONFIG", configPath);
-        // Force basic output to avoid terminal styling codes in the JSON
         env.insert("TERM", "dumb"); 
         proc->setProcessEnvironment(env);
     
-        proc->start("/home/root/sbin/k3s", {"kubectl", "get", "pods", "-A", "-o", "json"});
-        
-        connect(proc, &QProcess::finished, [this, proc, configPath]() {
+        // 1. Try to find 'kubectl' in the system PATH (works for local dev)
+        QString kubectlBin = QStandardPaths::findExecutable("kubectl");
+
+        // 2. If not found, fallback to the reMarkable-specific k3s wrapper
+        if (kubectlBin.isEmpty()) {
+            kubectlBin = "/home/root/sbin/k3s";
+            // When using the k3s wrapper, the first argument must be "kubectl"
+            proc->start(kubectlBin, {"kubectl", "get", "pods", "-A", "-o", "json"});
+        } else {
+            // When using a standalone kubectl, just pass the arguments
+            proc->start(kubectlBin, {"get", "pods", "-A", "-o", "json"});
+        }        
+        connect(proc, &QProcess::finished, [this, proc]() {
             bool success = (proc->exitStatus() == QProcess::NormalExit && proc->exitCode() == 0);
-            
             if (success) {
                 m_k3sRunning = true;
                 parsePods(proc->readAllStandardOutput());
             } else {
-                qWarning() << "Kubectl failed with error:" << proc->readAllStandardError();
                 m_k3sRunning = false;
                 m_podList.clear();
             }
-            
             updateUI();
             proc->deleteLater();
         });
@@ -120,30 +170,19 @@ private:
         for (const QJsonValue &value : items) {
             QJsonObject obj = value.toObject();
             QVariantMap pod;
-            
-            // Extract Metadata
             QJsonObject metadata = obj["metadata"].toObject();
             pod["namespace"] = metadata["namespace"].toString();
             pod["name"] = metadata["name"].toString();
-            
-            // Extract Status
             QJsonObject statusObj = obj["status"].toObject();
             pod["status"] = statusObj["phase"].toString();
             
-            // Calculate Ready Count
             QJsonArray containerStatuses = statusObj["containerStatuses"].toArray();
             int readyCount = 0;
-            int totalCount = containerStatuses.size();
-            
             for(const QJsonValue &cs : containerStatuses) {
-                if(cs.toObject()["ready"].toBool()) {
-                    readyCount++;
-                }
+                if(cs.toObject()["ready"].toBool()) readyCount++;
             }
             
-            // Format as "1/1" etc.
-            pod["ready"] = QString("%1/%2").arg(readyCount).arg(totalCount > 0 ? totalCount : 0);
-            
+            pod["ready"] = QString("%1/%2").arg(readyCount).arg(containerStatuses.size());
             newList.append(pod);
         }
         m_podList = newList;
